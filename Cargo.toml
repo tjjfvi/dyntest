@@ -1,9 +1,9 @@
 [package]
 name = "dyntest"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
-repository = "https://gtihub.com/tjjfvi/dyntest"
+repository = "https://github.com/tjjfvi/dyntest"
 description = "Dynamically create test cases."
 
 [dependencies]
