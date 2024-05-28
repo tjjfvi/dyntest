@@ -194,6 +194,12 @@ impl ShouldPanic {
   }
 }
 
+impl Into<String> for Name {
+  fn into(self) -> String {
+    self.0.into_owned()
+  }
+}
+
 impl From<&'static str> for Name {
   fn from(value: &'static str) -> Self {
     Name(Cow::Borrowed(value))
