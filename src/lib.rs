@@ -19,6 +19,12 @@ macro_rules! dyntest {
     fn main() {
       $crate::_dyntest(env!("CARGO_MANIFEST_DIR"), file!(), line!() as usize, column!() as usize, $f)
     }
+
+    // `#[test]`s are ignored when the harness is disabled
+    #[test]
+    fn __dyntest_ensure_no_harness() {
+      $crate::_dyntest_harness_error!()
+    }
   };
   ($($f:ident),+ $(,)?) => {
     $crate::dyntest!(|tester| {
@@ -275,4 +281,22 @@ impl From<String> for ShouldPanic {
 
 fn leak_string(string: String) -> &'static str {
   Box::leak(string.into_boxed_str())
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! _dyntest_harness_error {
+  () => {
+    compile_error!(
+      r#"`dyntest!` was invoked, but the default test harness is active, so this has no effect
+
+to fix this, add `harness = false` to this test in your `Cargo.toml`:
+```toml
+[[test]]
+name = "..."
+harness = false
+```
+"#
+    );
+  };
 }
