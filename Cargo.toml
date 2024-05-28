@@ -2,6 +2,7 @@
 name = "dyntest"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 globset = { version = "0.4.14", optional = true }
