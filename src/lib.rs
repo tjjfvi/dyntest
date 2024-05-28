@@ -105,7 +105,7 @@ impl DynTester {
   ///
   /// Returns an iterator of pretty names and absolute paths.
   #[cfg(feature = "glob")]
-  pub fn glob(&self, pattern: &str) -> impl Iterator<Item = (Name, PathBuf)> {
+  pub fn glob(&self, pattern: &str) -> impl Iterator<Item = (Name, &'static Path)> {
     self.glob_in(".", pattern)
   }
 
@@ -118,7 +118,7 @@ impl DynTester {
     &self,
     base: impl AsRef<Path>,
     pattern: &str,
-  ) -> impl Iterator<Item = (Name, PathBuf)> {
+  ) -> impl Iterator<Item = (Name, &'static Path)> {
     use globset::GlobBuilder;
     use walkdir::WalkDir;
 
@@ -137,7 +137,7 @@ impl DynTester {
       let file = file.unwrap();
       let path = file.path();
       let relative_path = path.strip_prefix(&base).ok()?;
-      glob.is_match(relative_path).then(|| (relative_path.into(), path.to_owned()))
+      glob.is_match(relative_path).then(|| (relative_path.into(), leak(path.to_owned())))
     })
   }
 }
@@ -257,7 +257,7 @@ impl From<&'static str> for Ignore {
 
 impl From<String> for Ignore {
   fn from(value: String) -> Self {
-    leak_string(value).into()
+    leak::<str>(value).into()
   }
 }
 
@@ -275,12 +275,12 @@ impl From<&'static str> for ShouldPanic {
 
 impl From<String> for ShouldPanic {
   fn from(value: String) -> Self {
-    leak_string(value).into()
+    leak::<str>(value).into()
   }
 }
 
-fn leak_string(string: String) -> &'static str {
-  Box::leak(string.into_boxed_str())
+fn leak<T: ?Sized>(value: impl Into<Box<T>>) -> &'static T {
+  Box::leak(value.into())
 }
 
 #[doc(hidden)]
