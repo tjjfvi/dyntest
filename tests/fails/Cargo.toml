@@ -1,0 +1,6 @@
+[package]
+name = "fails"
+publish = false
+
+[dependencies]
+dyntest = { path = "../.." }

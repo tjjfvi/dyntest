@@ -30,6 +30,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fails"
+version = "0.0.0"
+dependencies = [
+ "dyntest",
+]
+
+[[package]]
 name = "globset"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
