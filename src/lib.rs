@@ -7,9 +7,9 @@ use std::{
   borrow::Cow,
   env,
   path::{Path, PathBuf},
-  process::Termination,
+  process::{Command, Stdio, Termination},
 };
-use test::{test_main, TestDesc, TestDescAndFn, TestFn, TestName, TestType};
+use test::{TestDesc, TestDescAndFn, TestFn, TestName, TestType, test_main};
 
 /// Enables the `dyntest` test runner, given a list of test-generating
 /// functions.
@@ -20,10 +20,11 @@ macro_rules! dyntest {
       $crate::_dyntest(env!("CARGO_MANIFEST_DIR"), file!(), line!() as usize, column!() as usize, $f)
     }
 
-    // `#[test]`s are ignored when the harness is disabled
     #[test]
-    fn __dyntest_ensure_no_harness() {
-      $crate::_dyntest_harness_error!()
+    #[allow(unexpected_cfgs)]
+    fn dyntest() {
+      #[cfg(not(rust_analyzer))]
+      { $crate::_dyntest_harness_error!() }
     }
   };
   ($($f:ident),+ $(,)?) => {
@@ -41,9 +42,22 @@ pub fn _dyntest(
   col: usize,
   f: impl FnOnce(&mut DynTester),
 ) {
-  let mut tester = DynTester { manifest, file, line, col, tests: vec![], group: String::new() };
-  f(&mut tester);
   let args = env::args().collect::<Vec<_>>();
+  let mut tester = DynTester { manifest, file, line, col, tests: vec![], group: String::new() };
+  if args.get(1).is_some_and(|x| x == "dyntest") {
+    // rust-analyzer mode
+    let bin = args[0].clone();
+    tester.test("dyntest", || -> Result<(), String> {
+      let output = Command::new(bin)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .map_err(|e| e.to_string())?;
+      if output.status.success() { Ok(()) } else { Err("dyntests failed".into()) }
+    });
+  } else {
+    f(&mut tester);
+  }
   let tests = tester.tests.into_iter().map(|x| x.0).collect();
   test_main(&args, tests, None)
 }
