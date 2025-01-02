@@ -1,11 +1,13 @@
 #![doc = include_str!("../README.md")]
 #![feature(test)]
+#![allow(unexpected_cfgs)]
 
 extern crate test;
 
 use std::{
   borrow::Cow,
-  env,
+  collections::BTreeMap,
+  env, fmt, fs,
   path::{Path, PathBuf},
   process::{Command, Stdio, Termination},
 };
@@ -20,12 +22,7 @@ macro_rules! dyntest {
       $crate::_dyntest(env!("CARGO_MANIFEST_DIR"), file!(), line!() as usize, column!() as usize, $f)
     }
 
-    #[test]
-    #[allow(unexpected_cfgs)]
-    fn dyntest() {
-      #[cfg(not(rust_analyzer))]
-      { $crate::_dyntest_harness_error!() }
-    }
+    $crate::_dyntest_shims!();
   };
   ($($f:ident),+ $(,)?) => {
     $crate::dyntest!(|tester| {
@@ -45,7 +42,6 @@ pub fn _dyntest(
   let args = env::args().collect::<Vec<_>>();
   let mut tester = DynTester { manifest, file, line, col, tests: vec![], group: String::new() };
   if args.get(1).is_some_and(|x| x == "dyntest") {
-    // rust-analyzer mode
     let bin = args[0].clone();
     tester.test("dyntest", || -> Result<(), String> {
       let output = Command::new(bin)
@@ -56,7 +52,12 @@ pub fn _dyntest(
       if output.status.success() { Ok(()) } else { Err("dyntests failed".into()) }
     });
   } else {
-    f(&mut tester);
+    tester.group("dyn", f);
+  }
+  if cfg!(feature = "test_explorer") && args.get(1).is_some_and(|x| x == "refresh") {
+    tester.build_test_explorer();
+    tester.tests.clear();
+    tester.test("refresh", || {});
   }
   let tests = tester.tests.into_iter().map(|x| x.0).collect();
   test_main(&args, tests, None)
@@ -153,6 +154,40 @@ impl DynTester {
       let relative_path = path.strip_prefix(&base).ok()?;
       glob.is_match(relative_path).then(|| (relative_path.into(), leak(path.to_owned())))
     })
+  }
+
+  fn build_test_explorer(&self) {
+    #[derive(Default)]
+    struct Tree<'a>(BTreeMap<&'a str, Tree<'a>>);
+    impl<'a> Tree<'a> {
+      fn insert(&mut self, path: &'a str) {
+        if path != "" {
+          let (initial, rest) = path.split_once("::").unwrap_or((path, ""));
+          self.0.entry(initial).or_default().insert(rest);
+        }
+      }
+    }
+    impl fmt::Display for Tree<'_> {
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (name, child) in &self.0 {
+          if child.0.is_empty() {
+            write!(f, "#[test] fn {name}() {{}}\n")?;
+          } else {
+            write!(f, "mod {name} {{\n{child}}}\n")?;
+          }
+        }
+        Ok(())
+      }
+    }
+    let mut tree = Tree::default();
+    for test in &self.tests {
+      tree.insert(test.0.desc.name.as_slice().strip_prefix("dyn::").unwrap());
+    }
+    let file = tree.to_string();
+    let mut path = PathBuf::from(self.file);
+    path.pop();
+    path.push(".dyntests.rs");
+    fs::write(&path, file).unwrap();
   }
 }
 
@@ -298,11 +333,14 @@ fn leak<T: ?Sized>(value: impl Into<Box<T>>) -> &'static T {
 }
 
 #[doc(hidden)]
+#[cfg(not(rust_analyzer))]
 #[macro_export]
-macro_rules! _dyntest_harness_error {
+macro_rules! _dyntest_shims {
   () => {
-    compile_error!(
-      r#"`dyntest!` was invoked, but the default test harness is active, so this has no effect
+    #[test]
+    fn _dyntest_ensure_no_harness() {
+      compile_error!(
+        r#"`dyntest!` was invoked, but the default test harness is active, so this has no effect
 
 to fix this, add `harness = false` to this test in your `Cargo.toml`:
 ```toml
@@ -311,6 +349,31 @@ name = "..."
 harness = false
 ```
 "#
-    );
+      );
+    }
+  };
+}
+
+#[doc(hidden)]
+#[cfg(all(rust_analyzer, not(feature = "test_explorer")))]
+#[macro_export]
+macro_rules! _dyntest_shims {
+  () => {
+    #[test]
+    fn dyntest() {}
+  };
+}
+
+#[doc(hidden)]
+#[cfg(all(rust_analyzer, feature = "test_explorer"))]
+#[macro_export]
+macro_rules! _dyntest_shims {
+  () => {
+    #[test]
+    fn refresh() {}
+
+    mod r#dyn {
+      include!("./.dyntests.rs");
+    }
   };
 }

@@ -13,6 +13,7 @@ walkdir = { version = "2.5.0", optional = true }
 [features]
 default = ["glob"]
 glob = ["dep:globset", "dep:walkdir"]
+test_explorer = []
 
 [workspace]
 members = ["tests/fails"]
